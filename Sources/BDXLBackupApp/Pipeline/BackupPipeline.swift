@@ -283,10 +283,8 @@ final class BackupPipeline: ObservableObject {
         if let speed = settings.burnSpeedX, speed > 0 {
             args.append(contentsOf: ["-speed", "\(speed)"])
         }
-        /// Highest safety: verify during burn when user asked for any verify mode.
-        if settings.verifyMode != .none {
-            args.append("-verify")
-        }
+        /// `hdiutil burn` options vary by macOS release; post-burn verification is handled
+        /// by `verifyArtifacts` to avoid relying on unsupported burn-time flags.
         args.append(isoURL.path)
 
         state.appendLog("hdiutil \(args.joined(separator: " "))")
