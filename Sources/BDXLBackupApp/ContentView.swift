@@ -15,6 +15,7 @@ struct ContentView: View {
     @State private var showOutputArtifactsInfo = false
     @State private var showBurnSpeedInfo = false
     @State private var availableBurnSpeeds: [Int] = [1, 2, 4, 6, 8, 12, 16]
+    @State private var detectedMediaLabel: String?
 
     var body: some View {
         GeometryReader { proxy in
@@ -104,6 +105,11 @@ struct ContentView: View {
                                         Text("\(p.rawValue) (~\(String(format: "%.1f", p.safeMaxPayloadGiB)) GiB safe)")
                                             .tag(p)
                                     }
+                                }
+                                if let label = detectedMediaLabel {
+                                    Text("Detected disc: \(label)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
                                 }
                                 Text("Usable payload limit is approximate; leave margin for filesystem overhead.")
                                     .font(.caption)
@@ -229,15 +235,24 @@ struct ContentView: View {
         }
         .onChange(of: selectedDriveId) { _ in
             syncBurnTargetFromUI()
-            Task { await refreshBurnSpeeds() }
+            Task {
+                await refreshBurnSpeeds()
+                await refreshDetectedMedia()
+            }
         }
         .onChange(of: manualBSDName) { _ in
             syncBurnTargetFromUI()
-            Task { await refreshBurnSpeeds() }
+            Task {
+                await refreshBurnSpeeds()
+                await refreshDetectedMedia()
+            }
         }
         .onChange(of: settings.burnAfterISO) { _ in
             syncBurnTargetFromUI()
-            Task { await refreshBurnSpeeds() }
+            Task {
+                await refreshBurnSpeeds()
+                await refreshDetectedMedia()
+            }
         }
         .sheet(isPresented: $showHelp) {
             helpSheet
@@ -407,6 +422,7 @@ struct ContentView: View {
         }
         syncBurnTargetFromUI()
         await refreshBurnSpeeds()
+        await refreshDetectedMedia()
     }
 
     private func refreshBurnSpeeds() async {
@@ -414,6 +430,19 @@ struct ContentView: View {
         availableBurnSpeeds = speeds
         if let selected = settings.burnSpeedX, !speeds.contains(selected) {
             settings.burnSpeedX = speeds.first
+        }
+    }
+
+    private func refreshDetectedMedia() async {
+        guard settings.burnAfterISO else {
+            detectedMediaLabel = nil
+            return
+        }
+
+        let detection = await DriveDiscovery.detectInsertedMedia(deviceBSDName: settings.targetDeviceBSDName)
+        detectedMediaLabel = detection.label
+        if let profile = detection.profile {
+            settings.profile = profile
         }
     }
 

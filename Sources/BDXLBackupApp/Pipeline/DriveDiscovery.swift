@@ -16,6 +16,11 @@ struct OpticalDriveInfo: Identifiable, Hashable, Sendable {
     }
 }
 
+struct OpticalMediaDetection: Sendable {
+    var profile: BurnProfile?
+    var label: String?
+}
+
 enum DriveDiscovery {
     /// Lists optical writers using `drutil list` and enriches with `/dev/disk*` when possible.
     static func discoverDrives() async -> [OpticalDriveInfo] {
@@ -139,6 +144,44 @@ enum DriveDiscovery {
         return parsed
     }
 
+    /// Best-effort inserted media detection for auto-selecting capacity profile.
+    static func detectInsertedMedia(deviceBSDName: String?) async -> OpticalMediaDetection {
+        let runner = ProcessRunner()
+        var blobs: [String] = []
+
+        let drPath = ToolResolver.drutilExecutable()
+        if FileManager.default.isExecutableFile(atPath: drPath) {
+            if let status = try? await runner.runCollecting(
+                launchPath: drPath,
+                arguments: ["status"]
+            ).output {
+                blobs.append(status)
+            }
+            if let info = try? await runner.runCollecting(
+                launchPath: drPath,
+                arguments: ["info"]
+            ).output {
+                blobs.append(info)
+            }
+        }
+
+        let duPath = ToolResolver.diskutilExecutable()
+        if FileManager.default.isExecutableFile(atPath: duPath),
+           let node = normalizedDiskNode(from: deviceBSDName),
+           !node.isEmpty,
+           let info = try? await runner.runCollecting(
+               launchPath: duPath,
+               arguments: ["info", node]
+           ).output {
+            blobs.append(info)
+        }
+
+        let merged = blobs.joined(separator: "\n")
+        let profile = BurnProfile.infer(from: merged)
+        let label = inferredMediaLabel(from: merged, fallbackProfile: profile)
+        return OpticalMediaDetection(profile: profile, label: label)
+    }
+
     private static func parseWriteSpeeds(from text: String) -> [Int] {
         // Extract numbers like 1x, 2.4x, 16x on lines mentioning write speed.
         let lines = text.split(separator: "\n").map(String.init)
@@ -166,6 +209,45 @@ enum DriveDiscovery {
 
     private static func fallbackSpeeds() -> [Int] {
         [1, 2, 4, 6, 8, 12, 16]
+    }
+
+    private static func normalizedDiskNode(from bsdName: String?) -> String? {
+        guard let raw = bsdName?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty else {
+            return nil
+        }
+        if raw.hasPrefix("/dev/") {
+            return String(raw.dropFirst("/dev/".count))
+        }
+        return raw
+    }
+
+    private static func inferredMediaLabel(from text: String, fallbackProfile: BurnProfile?) -> String? {
+        let lines = text.split(separator: "\n").map(String.init)
+        let keys = [
+            "Media Type",
+            "Device / Media Name",
+            "Disc Type",
+            "Medium Type",
+            "Type (Bundle)"
+        ]
+
+        for line in lines {
+            for key in keys where line.localizedCaseInsensitiveContains(key) {
+                if let colon = line.firstIndex(of: ":") {
+                    let value = String(line[line.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
+                    if !value.isEmpty {
+                        return value
+                    }
+                }
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if !trimmed.isEmpty {
+                    return trimmed
+                }
+            }
+        }
+
+        return fallbackProfile?.rawValue
     }
 
     /// Best-effort: map first token of `diskutil list` device lines to optical media names.

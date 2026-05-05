@@ -290,12 +290,24 @@ final class BackupPipeline: ObservableObject {
         args.append(isoURL.path)
 
         state.appendLog("hdiutil \(args.joined(separator: " "))")
+        var burnOutput: [String] = []
         let code = try await runner.runStreaming(
             launchPath: ToolResolver.hdiutilExecutable(),
             arguments: args,
-            onLine: { state.appendLog($0) }
+            onLine: { line in
+                burnOutput.append(line)
+                state.appendLog(line)
+            }
         )
-        try throwIfBadExit(code, cmd: "hdiutil burn")
+        if code != 0 {
+            let tail = burnOutput.suffix(80).joined(separator: "\n")
+            let details = tail.isEmpty ? "No output captured from hdiutil." : tail
+            throw NSError(
+                domain: "BDXLBackup",
+                code: 101,
+                userInfo: [NSLocalizedDescriptionKey: "hdiutil burn failed (\(code)):\n\(details)"]
+            )
+        }
     }
 
     private func verifyArtifacts(

@@ -29,6 +29,41 @@ enum BurnProfile: String, CaseIterable, Identifiable, Sendable {
         case .bdxlQL128: return 115.0
         }
     }
+
+    /// Best-effort mapping from `drutil` / `diskutil` media descriptions to app profiles.
+    static func infer(from mediaText: String) -> BurnProfile? {
+        let upper = mediaText.uppercased()
+        guard upper.contains("BD") || upper.contains("BLU") else {
+            return nil
+        }
+
+        // Prefer most specific matches first.
+        if upper.contains("BDXL"), (upper.contains("QL") || upper.contains("4L") || upper.contains("128")) {
+            return .bdxlQL128
+        }
+        if upper.contains("BDXL")
+            || upper.contains("TRIPLE")
+            || upper.contains("TL")
+            || upper.contains("100GB")
+            || upper.contains("100 GB") {
+            return .bdxlTL100
+        }
+        if upper.contains("DL")
+            || upper.contains("DOUBLE")
+            || upper.contains("DUAL")
+            || upper.contains("50GB")
+            || upper.contains("50 GB") {
+            return .bdRDL50
+        }
+        if upper.contains("BD-R")
+            || upper.contains("BDRE")
+            || upper.contains("BD-RE")
+            || upper.contains("BLU-RAY")
+            || upper.contains("BLURAY") {
+            return .bdR25
+        }
+        return nil
+    }
 }
 
 enum VerifyMode: String, CaseIterable, Identifiable, Sendable {
