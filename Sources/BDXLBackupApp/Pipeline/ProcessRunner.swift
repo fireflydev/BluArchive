@@ -179,7 +179,11 @@ enum ToolResolver {
     }
 
     static func hdiutilExecutable() -> String {
-        "/usr/sbin/hdiutil"
+        resolveExecutable(
+            named: "hdiutil",
+            preferred: ["/usr/bin/hdiutil", "/usr/sbin/hdiutil"],
+            defaultPath: "/usr/bin/hdiutil"
+        )
     }
 
     static func drutilExecutable() -> String {
@@ -187,10 +191,46 @@ enum ToolResolver {
     }
 
     static func diskutilExecutable() -> String {
-        "/sbin/diskutil"
+        resolveExecutable(
+            named: "diskutil",
+            preferred: ["/usr/sbin/diskutil", "/sbin/diskutil"],
+            defaultPath: "/usr/sbin/diskutil"
+        )
     }
 
     static func duExecutable() -> String {
         "/usr/bin/du"
+    }
+
+    private static func resolveExecutable(
+        named name: String,
+        preferred: [String],
+        defaultPath: String
+    ) -> String {
+        if let direct = firstExecutable(from: preferred) {
+            return direct
+        }
+        if let fromPATH = executableInPATH(named: name) {
+            return fromPATH
+        }
+        return defaultPath
+    }
+
+    private static func firstExecutable(from paths: [String]) -> String? {
+        for path in paths where FileManager.default.isExecutableFile(atPath: path) {
+            return path
+        }
+        return nil
+    }
+
+    private static func executableInPATH(named name: String) -> String? {
+        let pathValue = enrichedPATH
+        for directory in pathValue.split(separator: ":") {
+            let candidate = String(directory) + "/" + name
+            if FileManager.default.isExecutableFile(atPath: candidate) {
+                return candidate
+            }
+        }
+        return nil
     }
 }
