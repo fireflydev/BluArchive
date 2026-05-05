@@ -1,0 +1,94 @@
+BluArchive - App Store Requirements and Descriptions
+===================================================
+
+Product Name
+------------
+BluArchive
+
+Category
+--------
+Utilities
+
+Short Description (Subtitle)
+----------------------------
+Blu-ray and BDXL archive preparation and burn workflow.
+
+Promotional Text
+----------------
+BluArchive streamlines optical archive creation with a reliability-first workflow: optional TAR packaging, optional PAR2 redundancy, ISO generation, burn controls, and verification tools for long-term storage.
+
+App Description (Long)
+----------------------
+BluArchive is a macOS utility for preparing and burning archival Blu-ray media, including BDXL capacities. It orchestrates a practical reliability workflow for large data sets: stage files, optionally package with TAR, optionally generate PAR2 recovery sets, build a UDF/ISO image, burn to optical media, and verify results.
+
+Key capabilities:
+- Supports Blu-ray and BDXL archival workflows.
+- Optional TAR-first mode to improve metadata consistency and reliability.
+- Optional PAR2 redundancy for recoverability.
+- ISO build, burn speed selection, and drive selection.
+- Tray controls (open/close) from inside the app.
+- Verification modes (quick and deep).
+- Live progress and log output.
+- Diagnostics export for troubleshooting.
+
+System Requirements
+-------------------
+- macOS 13.0 or later
+- Apple Silicon or Intel Mac capable of running macOS 13+
+- External or internal Blu-ray/BDXL optical writer compatible with macOS (required for physical burning)
+- Sufficient free disk space for staging and ISO generation (recommended: at least source size + overhead)
+
+Required External Dependency
+----------------------------
+- par2 command line tool (for PAR2 redundancy mode)
+  Install command:
+  brew install par2
+
+Built-in macOS Tools Used
+-------------------------
+- tar
+- hdiutil
+- shasum
+- drutil
+
+Permissions / Access Notes
+--------------------------
+BluArchive requires user-selected folder access for:
+- Source folder (files to archive)
+- Staging/output folder (temporary artifacts and final ISO)
+
+No background daemons are installed.
+
+Why a Staging Folder Is Required
+--------------------------------
+BluArchive writes large intermediate artifacts during processing, such as:
+- _bdxl_work staging directory
+- TAR archive (when enabled)
+- PAR2 files (when enabled)
+- checksum manifest
+- final ISO image
+
+Using a user-controlled staging folder is more reliable than /tmp for large archival jobs because temporary storage may be reclaimed by the system.
+
+Keywords (App Store Search)
+---------------------------
+blu-ray,bdxl,optical-disc,archive,burn,iso,udf,backup,par2,checksum
+
+Support URL (placeholder)
+-------------------------
+https://example.com/bluarchive-support
+
+Marketing URL (placeholder)
+---------------------------
+https://example.com/bluarchive
+
+Copyright
+---------
+Copyright (c) 2026 BluArchive.
+
+Review Notes (for App Review)
+-----------------------------
+- Physical burn features require a connected compatible optical drive.
+- PAR2 mode requires par2 installed by the user (brew install par2).
+- App can still create ISO images without burning if no drive is connected.
+
