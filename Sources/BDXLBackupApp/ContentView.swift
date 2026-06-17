@@ -203,7 +203,7 @@ struct ContentView: View {
                                 }
                             }
                         }
-                    .formStyle(.grouped)
+                    .groupedFormIfAvailable()
                     .frame(maxHeight: .infinity, alignment: .top)
                 }
                 .frame(maxHeight: .infinity, alignment: .top)
@@ -271,7 +271,7 @@ struct ContentView: View {
                 .foregroundStyle(Color(red: 0.00, green: 0.72, blue: 0.95))
         }
         .font(.system(size: 44, weight: .heavy, design: .default))
-        .tracking(0.2)
+        .trackingIfAvailable(0.2)
         .lineLimit(1)
     }
 

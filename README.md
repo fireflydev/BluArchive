@@ -6,10 +6,12 @@ Native SwiftUI macOS app that runs the same workflow as `bluray.sh`:
 
 ## Requirements
 
-- macOS 13+
+- macOS 12.3+
 - Xcode or Swift toolchain (`swift`)
 - **par2** (e.g. `brew install par2`)
 - Blu-ray writer supported by macOS
+
+SwiftPM platform declarations are coarse (`.macOS(.v12)`), but this app's effective minimum is macOS 12.3+.
 
 ## Build CLI binary
 
@@ -53,7 +55,7 @@ Open with **right-click → Open** the first time if Gatekeeper prompts.
 | Preflight | Missing `par2` → clear error in log |
 | Small dataset | ISO-only (burn off), quick verify |
 | Capacity guard | Source larger than profile safe GiB → rejected before TAR |
-| Burn | External writer, slowest speed + `-verify` when verify ≠ None |
+| Burn | External writer, slowest speed; then run quick/deep verify mode |
 | Cancel | Cancel during TAR/PAR2 → process terminates |
 
 ## Notes

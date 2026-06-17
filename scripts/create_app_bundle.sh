@@ -1,18 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build release binary if missing
+# Build universal release binary
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-if ! swift build -c release 2>/dev/null; then
-  echo "Run from Terminal (not sandboxed): swift build -c release"
+if ! swift build -c release --arch arm64 2>/dev/null; then
+  echo "Run from Terminal (not sandboxed): swift build -c release --arch arm64"
   exit 1
 fi
 
-BIN="$(ls "$ROOT"/.build/*apple*/release/BDXLBackupApp 2>/dev/null | head -1 || true)"
-if [[ -z "$BIN" || ! -f "$BIN" ]]; then
-  echo "Could not find built binary under .build/*/release/BDXLBackupApp"
+if ! swift build -c release --arch x86_64 2>/dev/null; then
+  echo "Run from Terminal (not sandboxed): swift build -c release --arch x86_64"
+  exit 1
+fi
+
+BIN_ARM64="$ROOT/.build/arm64-apple-macosx/release/BDXLBackupApp"
+BIN_X64="$ROOT/.build/x86_64-apple-macosx/release/BDXLBackupApp"
+if [[ ! -f "$BIN_ARM64" || ! -f "$BIN_X64" ]]; then
+  echo "Could not find both binaries under .build/<arch>-apple-macosx/release/BDXLBackupApp"
   exit 1
 fi
 
@@ -21,7 +27,8 @@ OUT_DIR="$ROOT/build"
 BUNDLE="$OUT_DIR/${APP_NAME}.app"
 rm -rf "$BUNDLE"
 mkdir -p "$BUNDLE/Contents/MacOS"
-cp "$BIN" "$BUNDLE/Contents/MacOS/BDXLBackupApp"
+
+lipo -create "$BIN_ARM64" "$BIN_X64" -output "$BUNDLE/Contents/MacOS/BDXLBackupApp"
 chmod +x "$BUNDLE/Contents/MacOS/BDXLBackupApp"
 mkdir -p "$BUNDLE/Contents/Resources"
 
@@ -75,7 +82,7 @@ cat > "$PLIST" <<EOF
   <key>CFBundleVersion</key>
   <string>1</string>
   <key>LSMinimumSystemVersion</key>
-  <string>13.0</string>
+  <string>12.3</string>
   <key>NSHighResolutionCapable</key>
   <true/>
   <key>NSHumanReadableCopyright</key>
@@ -85,3 +92,4 @@ cat > "$PLIST" <<EOF
 EOF
 
 echo "Created: $BUNDLE"
+lipo -info "$BUNDLE/Contents/MacOS/BDXLBackupApp"
