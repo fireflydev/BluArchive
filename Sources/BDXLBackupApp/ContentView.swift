@@ -97,6 +97,9 @@ struct ContentView: View {
                                     step: 1
                                 )
                                 .disabled(!settings.par2Enabled)
+                                Text("With TAR off, PAR2 creates one set per top-level source item.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
 
                             Section("Media") {
@@ -169,6 +172,9 @@ struct ContentView: View {
                                         Text(v.rawValue).tag(v)
                                     }
                                 }
+                                Text("Quick verify checks staging TAR checksum; deep also checks burned media checksum.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             Toggle("Keep BluArchive staging folder (_bdxl_work)", isOn: $settings.keepStagingFiles)
                             }
 

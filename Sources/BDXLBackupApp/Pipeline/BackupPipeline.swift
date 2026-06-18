@@ -50,8 +50,7 @@ final class BackupPipeline: ObservableObject {
                     settings: settings,
                     state: state,
                     workURL: paths.workURL,
-                    tarBaseName: paths.tarBaseName,
-                    isoURL: paths.isoURL
+                    tarBaseName: paths.tarBaseName
                 )
             }
 
@@ -220,7 +219,34 @@ final class BackupPipeline: ObservableObject {
             )
             try throwIfBadExit(par2Code, cmd: "par2 \(par2Args.joined(separator: " "))")
         } else if settings.par2Enabled {
-            state.appendLog("Skipping PAR2 stage: requires TAR-first mode.")
+            state.stage = .par2
+            state.progress = 0.35
+            guard let par2 = await ToolResolver.par2Executable() else {
+                throw NSError(domain: "BDXLBackup", code: 9, userInfo: [NSLocalizedDescriptionKey: "par2 disappeared from PATH."])
+            }
+            let redundancy = max(1, min(32, settings.par2RedundancyPercent))
+            let par2OutputDir = workURL.appendingPathComponent("par2", isDirectory: true)
+            try FileManager.default.createDirectory(at: par2OutputDir, withIntermediateDirectories: true)
+
+            let items = try topLevelItemsForPar2(in: source)
+            if items.isEmpty {
+                state.appendLog("PAR2 non-TAR mode: no eligible top-level items found; skipping PAR2 files.")
+            } else {
+                state.appendLog("PAR2 non-TAR mode: \(items.count) top-level item(s), \(redundancy)% redundancy.")
+            }
+
+            for (index, item) in items.enumerated() {
+                let baseName = par2BaseName(for: item, index: index)
+                let par2BasePath = par2OutputDir.appendingPathComponent(baseName).path
+                let args = ["create", "-r\(redundancy)", par2BasePath, item.path]
+                state.appendLog("PAR2 create for '\(item.lastPathComponent)'…")
+                let code = try await runner.runStreaming(
+                    launchPath: par2,
+                    arguments: args,
+                    onLine: { state.appendLog($0) }
+                )
+                try throwIfBadExit(code, cmd: "par2 \(args.joined(separator: " "))")
+            }
         } else {
             state.appendLog("Skipping PAR2 stage (disabled).")
         }
@@ -233,7 +259,8 @@ final class BackupPipeline: ObservableObject {
             state.appendLog("Writing SHA256 manifest…")
             let (shaCode, shaOut) = try await runner.runCollecting(
                 launchPath: ToolResolver.shasumExecutable(),
-                arguments: ["-a", "256", tarForSha.path]
+                arguments: ["-a", "256", tarForSha.lastPathComponent],
+                currentDirectory: workURL
             )
             try throwIfBadExit(shaCode, cmd: "shasum")
             try shaOut.write(to: manifestURL, atomically: true, encoding: .utf8)
@@ -312,8 +339,7 @@ final class BackupPipeline: ObservableObject {
         settings: BackupJobSettings,
         state: BackupState,
         workURL: URL,
-        tarBaseName: String,
-        isoURL: URL
+        tarBaseName: String
     ) async throws {
         let manifestURL = workURL.appendingPathComponent("\(tarBaseName)_sha256.txt")
 
@@ -337,19 +363,8 @@ final class BackupPipeline: ObservableObject {
         }
 
         if settings.verifyMode == .deep {
-            state.appendLog("Deep verify: hdiutil verify (ISO image)…")
-            let (c2, o2) = try await runner.runCollecting(
-                launchPath: ToolResolver.hdiutilExecutable(),
-                arguments: ["verify", isoURL.path]
-            )
-            if c2 != 0 {
-                throw NSError(
-                    domain: "BDXLBackup",
-                    code: 31,
-                    userInfo: [NSLocalizedDescriptionKey: "hdiutil verify failed:\n\(o2)"]
-                )
-            }
-            state.appendLog("hdiutil verify OK.")
+            state.appendLog("Deep verify: checksum-based mode with burned media check.")
+            state.appendLog("Skipping 'hdiutil verify' due to Monterey ioctl false-fail behavior.")
 
             if settings.tarFirstEnabled {
                 let tarURL = workURL.appendingPathComponent("\(tarBaseName).tar")
@@ -369,8 +384,137 @@ final class BackupPipeline: ObservableObject {
                         userInfo: [NSLocalizedDescriptionKey: "Post-ISO TAR checksum failed:\n\(o3)"]
                     )
                 }
+
+                if settings.burnAfterISO {
+                    try await verifyBurnedMediaChecksums(
+                        settings: settings,
+                        state: state,
+                        tarBaseName: tarBaseName
+                    )
+                } else {
+                    state.appendLog("Deep verify: burned media check skipped (burn disabled).")
+                }
+            } else if settings.burnAfterISO {
+                state.appendLog("Deep verify: burned media TAR checksum skipped (TAR first disabled).")
             }
         }
+    }
+
+    private func verifyBurnedMediaChecksums(
+        settings: BackupJobSettings,
+        state: BackupState,
+        tarBaseName: String
+    ) async throws {
+        let mountURL = try await locateBurnedMediaMountPoint(settings: settings, state: state)
+        let manifestName = "\(tarBaseName)_sha256.txt"
+        let manifestOnDisc = mountURL.appendingPathComponent(manifestName)
+
+        guard FileManager.default.fileExists(atPath: manifestOnDisc.path) else {
+            throw NSError(
+                domain: "BDXLBackup",
+                code: 33,
+                userInfo: [NSLocalizedDescriptionKey: "Deep verify failed: manifest not found on burned media at \(manifestOnDisc.path)"]
+            )
+        }
+
+        state.appendLog("Deep verify: checksum TAR on burned media (\(mountURL.path))…")
+        let (code, out) = try await runner.runCollecting(
+            launchPath: ToolResolver.shasumExecutable(),
+            arguments: ["-a", "256", "-c", manifestOnDisc.path],
+            currentDirectory: mountURL
+        )
+        if code != 0 {
+            throw NSError(
+                domain: "BDXLBackup",
+                code: 34,
+                userInfo: [NSLocalizedDescriptionKey: "Burned media checksum failed:\n\(out)"]
+            )
+        }
+        state.appendLog("Deep verify OK for burned media checksum.")
+    }
+
+    private func locateBurnedMediaMountPoint(
+        settings: BackupJobSettings,
+        state: BackupState
+    ) async throws -> URL {
+        if let mounted = findMountedVolumeURL(expectedVolumeLabel: settings.volumeLabel) {
+            return mounted
+        }
+
+        if let raw = settings.targetDeviceBSDName?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !raw.isEmpty {
+            let node = raw.replacingOccurrences(of: "/dev/", with: "")
+            state.appendLog("Deep verify: mounting burned media from \(node)…")
+            let (mountCode, mountOut) = try await runner.runCollecting(
+                launchPath: ToolResolver.diskutilExecutable(),
+                arguments: ["mountDisk", node]
+            )
+            if mountCode != 0 {
+                throw NSError(
+                    domain: "BDXLBackup",
+                    code: 35,
+                    userInfo: [NSLocalizedDescriptionKey: "Could not mount burned media:\n\(mountOut)"]
+                )
+            }
+            if let mounted = findMountedVolumeURL(expectedVolumeLabel: settings.volumeLabel) {
+                return mounted
+            }
+        }
+
+        throw NSError(
+            domain: "BDXLBackup",
+            code: 36,
+            userInfo: [NSLocalizedDescriptionKey: "Deep verify failed: burned media mount point not found for volume label '\(settings.volumeLabel)'."]
+        )
+    }
+
+    private func findMountedVolumeURL(expectedVolumeLabel: String) -> URL? {
+        let volumesRoot = URL(fileURLWithPath: "/Volumes", isDirectory: true)
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: volumesRoot,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return nil
+        }
+
+        let exact = entries.first { $0.lastPathComponent == expectedVolumeLabel }
+        if let exact { return exact }
+
+        return entries.first { $0.lastPathComponent.hasPrefix(expectedVolumeLabel) }
+    }
+
+    private func topLevelItemsForPar2(in source: URL) throws -> [URL] {
+        let fm = FileManager.default
+        let entries = try fm.contentsOfDirectory(
+            at: source,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: []
+        )
+        let filtered = entries.filter { entry in
+            let name = entry.lastPathComponent
+            if name.hasPrefix(".") { return false }
+            if name == ".DS_Store" { return false }
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: entry.path, isDirectory: &isDir) else {
+                return false
+            }
+            return true
+        }
+        return filtered.sorted { lhs, rhs in
+            lhs.lastPathComponent.localizedStandardCompare(rhs.lastPathComponent) == .orderedAscending
+        }
+    }
+
+    private func par2BaseName(for item: URL, index: Int) -> String {
+        let raw = item.lastPathComponent
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.")
+        let sanitizedScalars = raw.unicodeScalars.map { scalar -> Character in
+            allowed.contains(scalar) ? Character(scalar) : "_"
+        }
+        let sanitized = String(sanitizedScalars)
+        let fallback = sanitized.isEmpty ? "item" : sanitized
+        return String(format: "%03d_%@.par2", index + 1, fallback)
     }
 
     private func throwIfBadExit(_ code: Int32, cmd: String) throws {

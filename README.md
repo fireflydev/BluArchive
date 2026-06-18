@@ -43,9 +43,9 @@ Open with **right-click → Open** the first time if Gatekeeper prompts.
 1. **Choose** source folder and output folder.
 2. Pick **media profile** (25 / 50 / 100 / 128 GB class) — sizes are **safe payload** limits, not marketing capacity.
 3. Set **TAR first** (recommended for reliability) and **PAR2** toggle.
-4. If PAR2 is enabled, adjust **PAR2 redundancy** (default 12%).
+4. If PAR2 is enabled, adjust **PAR2 redundancy** (default 12%). With TAR off, PAR2 creates one set per top-level source item.
 5. Optionally **burn**; pick drive or enter **BSD device** (e.g. `disk4`).
-6. Choose **verify** mode; **deep** runs `hdiutil verify` on the ISO and re-checks TAR checksum when TAR-first is enabled.
+6. Choose **verify** mode; **quick** checks staging TAR checksum, and **deep** also checks burned media checksum (no `hdiutil verify` gate).
 7. **Export diagnostics** saves settings + full log.
 
 ## Runbook / test matrix

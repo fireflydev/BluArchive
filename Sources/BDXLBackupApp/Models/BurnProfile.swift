@@ -68,8 +68,8 @@ enum BurnProfile: String, CaseIterable, Identifiable, Sendable {
 
 enum VerifyMode: String, CaseIterable, Identifiable, Sendable {
     case none = "None"
-    case quick = "Quick (checksum manifest)"
-    case deep = "Deep (hdiutil verify + checksums)"
+    case quick = "Quick (staging TAR checksum)"
+    case deep = "Deep (burned media checksum + staging re-check)"
 
     var id: String { rawValue }
 }
